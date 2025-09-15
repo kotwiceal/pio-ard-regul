@@ -21,6 +21,8 @@
 #define REGULATOR_FIR_READ 16
 #define REGULATOR_NUMBER 17
 #define REGULATOR_BUFFER_LENGTH 18
+#define REGULATOR_DEADTIME_READ 19
+#define REGULATOR_DEADTIME_WRITE 20
 char buffer[4];
 int bytesRead = 0;
 int8_t command = 0, address = 0;
@@ -57,6 +59,10 @@ bool pinControlValue[reg_num] = {0, 0, 0};
 int8_t pinSignalMask[reg_num] = {A0, A1, A2};
 uint16_t pinSignalValue[reg_num] = {0, 0, 0};
 
+// define timer of trigger schmitt
+uint32_t time[reg_num], deadtime[reg_num];
+bool trigger[reg_num];
+
 float fir(uint16_t x[], int16_t coef[], uint8_t mask[], const uint8_t len) {
 	float y = 0;
 	for (uint8_t i = 0; i < len; i++) {
@@ -88,13 +94,16 @@ void regulator() {
 		reg_ptr = reg_ptr + 1;
 	}
 	for (uint8_t i = 0; i < reg_num; i++) {
-    	reg_fir_res[i] = int16_t(fir(reg_buf[i], reg_coef[i], reg_mask, reg_buf_len));
-		// pinControlValue[i] = (reg_fir_res[i] > reg_thresh_y[i])
-		// & (abs(pinSignalValue[i] - reg_thresh_x[i]) < reg_disc_x[i])
-		// & reg_en[i];
-		pinControlValue[i] = (abs(pinSignalValue[i] - reg_thresh_x[i]) > reg_disc_x[i])
-			& reg_en[i];
-		digitalWrite(pinControlMask[i], pinControlValue[i]);
+		if (!trigger[i]) {
+			pinControlValue[i] = !(int16_t(pinSignalValue[i] - reg_thresh_x[i]) > int16_t(reg_disc_x[i])) & reg_en[i];
+			digitalWrite(pinControlMask[i], pinControlValue[i]);
+			trigger[i] = true;
+			time[i] = 0;
+		} else {
+			if (time[i] > deadtime[i]) {
+				trigger[i] = false;
+			}
+		}
 	};
 }
 
@@ -167,6 +176,12 @@ void com() {
 			case REGULATOR_BUFFER_LENGTH:
 				data = int16_t(reg_buf_len);
 				break;
+			case REGULATOR_DEADTIME_READ:
+				deadtime[address] = data;
+				break;
+			case REGULATOR_DEADTIME_WRITE:
+				data = deadtime[address];
+				break;
 			default:
 				break;
 		}
@@ -203,9 +218,20 @@ void setup() {
 			reg_coef[i][j] = 0;
 		}
 	}
+	// initialize timer
+	for (uint8_t i = 0; i < reg_num; i++) {
+		time[i] = 0;
+		deadtime[i] = 500;
+		trigger[i] = false;
+	}
 }
 
 void loop() {
 	regulator();
 	com();
+	// update timers
+	delay(1);
+	for (uint8_t i = 0; i < reg_num; i++) {
+		time[i] = time[i] + 1;
+	}
 }

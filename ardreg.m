@@ -21,6 +21,9 @@ classdef ardreg
         REGULATOR_FIR_READ = 16
         REGULATOR_NUMBER = 17
         REGULATOR_BUFFER_LENGTH = 18
+        REGULATOR_DEADTIME_READ = 19
+        REGULATOR_DEADTIME_WRITE = 20
+        buflen = 1000
     end
 
     methods
@@ -49,7 +52,8 @@ classdef ardreg
             if (param.index > obj.regnum - 1); error(strcat("`index` must be less or equal ", num2str(obj.regnum-1))); end
 
             x = []; y = []; z = []; cnt = 1;
-            clf;
+            clf; 
+            % hold on;
             while 1
                 pause(param.pause)
                 [~, ~, x(cnt)] = obj.send(obj.REGULATOR_X_READ,param.index,0);
@@ -58,9 +62,16 @@ classdef ardreg
                 plot(1:cnt,[x;y*500;z]')
                 cnt = cnt + 1;
                 ylim([0, 1024]);
-                % xregion()
+                y == 1
+                % try
+                %     xregion(y(1:2:end),y(2:2:end))
+                % catch
+                % end
                 legend(["pressure", "control", "fir"])
                 if (cnt > 50); xlim([cnt-50, cnt]); end
+                if (cnt > obj.buflen)
+                    cnt = 1; x = []; y = []; z = [];
+                end
             end
         end
 

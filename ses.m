@@ -1,10 +1,10 @@
-%% initialize instance
+%% initialize MCU instance
 clc
 clear mcu
 mcu = ardreg('COM4')
-%% eneble control
+%% enable control
 i = 0;
-mcu.control(true,i,[1,0,0,0],600,50,1)
+mcu.control(true,i,[1,0,0,0],700,50,1)
 mcu.read('coef',i)
 mcu.read('thresholdx',i)
 mcu.read('discrepancyx',i)
