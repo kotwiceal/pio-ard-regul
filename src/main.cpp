@@ -23,23 +23,26 @@
 #define REGULATOR_BUFFER_LENGTH 18
 #define REGULATOR_DEADTIME_READ 19
 #define REGULATOR_DEADTIME_WRITE 20
-char buffer[4];
+#define VALVE_READ 21
+#define VALVE_WRITE 22
+const int buffbits = 4;
+char buffer[buffbits];
 int bytesRead = 0;
 int8_t command = 0, address = 0;
 int16_t data = 0;
 
 // define general purpose input digital pins
-const int8_t gpin = 3;
+const uint8_t gpin = 3;
 int8_t gpinMask[gpin] = {8, 9, 10};
 bool gpinValue[gpin] = {0, 0, 0};
 
 // define general purpose output digital pins
-const int8_t gpout = 4;
-int8_t gpoutMask[gpout] = {4, 5, 6, 7};
+const uint8_t gpout = 4;
+uint8_t gpoutMask[gpout] = {4, 5, 6, 7};
 bool gpoutValue[gpout] = {0, 0, 0, 0};
 
 // define regulator parameters
-const uint8_t reg_num = 3;
+const uint8_t reg_num = 2;
 const uint8_t reg_buf_len = 4;
 uint8_t reg_ptr = 0;
 uint16_t reg_buf[reg_num][reg_buf_len];
@@ -52,12 +55,16 @@ uint16_t reg_disc_x[reg_num];
 bool reg_en[reg_num];
 
 // define digital pins of regulator
-int8_t pinControlMask[reg_num] = {2, 12, 13};
-bool pinControlValue[reg_num] = {0, 0, 0};
+uint8_t pinControlMask[reg_num] = {12, 13};
+bool pinControlValue[reg_num] = {0, 0};
 
 // define analog pins of regulator
-int8_t pinSignalMask[reg_num] = {A0, A1, A2};
-uint16_t pinSignalValue[reg_num] = {0, 0, 0};
+uint8_t pinSignalMask[reg_num] = {A0, A1};
+uint16_t pinSignalValue[reg_num] = {0, 0};
+
+// define multiplexer mask pin
+const uint8_t pinMultBits = 1;
+uint8_t pinMultAddr[pinMultBits] = {2};
 
 // define timer of trigger schmitt
 uint32_t time[reg_num], deadtime[reg_num];
@@ -82,6 +89,16 @@ void regulator() {
 	}
 	// consequence ADC acquisition
 	for (uint8_t i = 0; i < reg_num; i++) {
+		switch (i) {
+			case 0:
+				digitalWrite(pinMultAddr[0], LOW);
+				break;
+			case  1:
+				digitalWrite(pinMultAddr[0], HIGH);
+			default:
+				break;
+		}
+		delay(10);
 		pinSignalValue[i] = analogRead(pinSignalMask[i]);
 		// accumulate buffer
 		reg_buf[i][reg_ptr] = pinSignalValue[i];
@@ -112,6 +129,15 @@ void com() {
 	if (Serial.available() > 0) {
 		// read buffer
 		bytesRead = Serial.readBytes(buffer, sizeof(buffer)); 
+		if (bytesRead != buffbits) { 
+			buffer[0] = 0;
+			buffer[1] = 0;
+			buffer[2] = 0;
+			buffer[3] = 0;
+			Serial.write(buffer, sizeof(buffer));
+			Serial.flush();
+			return;
+		}
 
 		// parse packet
 		command = buffer[0];
@@ -177,10 +203,17 @@ void com() {
 				data = int16_t(reg_buf_len);
 				break;
 			case REGULATOR_DEADTIME_READ:
-				deadtime[address] = data;
+				data = deadtime[address];	
 				break;
 			case REGULATOR_DEADTIME_WRITE:
-				data = deadtime[address];
+				deadtime[address] = data;
+				break;
+			case VALVE_READ:
+				pinControlValue[address] = digitalRead(pinControlMask[address]);
+				data = pinControlValue[address];
+				break;
+			case VALVE_WRITE:
+				digitalWrite(pinControlMask[address], data);
 				break;
 			default:
 				break;
@@ -192,11 +225,13 @@ void com() {
 
 		// transmit response
 		Serial.write(buffer, sizeof(buffer));
+		Serial.flush();
 	}
 }
 
 void setup() {
 	Serial.begin(BOARDRATE);
+	Serial.setTimeout(5000);
 	// initialize general purpose input digital pins
 	for (int i = 0; i < gpin; i++) {pinMode(gpinMask[i], INPUT);}
 	// initialize general purpose output digital pins
@@ -221,8 +256,13 @@ void setup() {
 	// initialize timer
 	for (uint8_t i = 0; i < reg_num; i++) {
 		time[i] = 0;
-		deadtime[i] = 500;
+		deadtime[i] = 100;
 		trigger[i] = false;
+	}
+	// initialize multiplexer address pins
+	for (uint8_t i = 0; i < pinMultBits; i++) {
+		pinMode(pinMultAddr[i], OUTPUT);
+		digitalWrite(pinMultAddr[i], LOW);
 	}
 }
 
