@@ -5,3 +5,6 @@
 .vscode/ipch
 .obsidian/worksapce.json
 *.asv
+*.m3~
+*.m3d.bak
+*.a3d.bak

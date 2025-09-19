@@ -52,56 +52,76 @@ classdef ardreg
         function obj = monitor(obj, param)
             arguments
                 obj
+                param.channel (1,:) = 0
                 param.pause = 0.1
-                param.index (1,1) = 0
                 param.docked (1,1) = false
+                param.buflen (1,1) = 1024
+                param.ylim (1,2) = [0, 1024]
             end
 
-            if (param.index > obj.regnum - 1); error(strcat("`index` must be less or equal ", num2str(obj.regnum-1))); end
-            [~, ~, thrx] = obj.send(obj.REGULATOR_THRESHOLD_X_READ, param.index, 0);
-            [~, ~, discx] = obj.send(obj.REGULATOR_DISCREPANCY_X_READ, param.index, 0);
+            if (param.channel > obj.regnum - 1); error(strcat("`channel` must be less or equal ", num2str(obj.regnum-1))); end
+            
+            thrx = []; discx = [];
+            for i = 1:numel(param.channel)
+                [~, ~, thrx(i)] = obj.send(obj.REGULATOR_THRESHOLD_X_READ, param.channel(i), 0);
+                [~, ~, discx(i)] = obj.send(obj.REGULATOR_DISCREPANCY_X_READ, param.channel(i), 0);
+            end
 
-            cnt = 1; x = []; y = []; z = []; lb = 0; rb = 0;
+            cnt = 1; x = cell(1, numel(param.channel)); y = cell(1, numel(param.channel)); 
+            lb = num2cell(zeros(1, numel(param.channel))); 
+            rb = num2cell(zeros(1, numel(param.channel)));
+
             if param.docked; figure(WindowStyle = 'docked'); else; clf; end
             f = gcf; t = tiledlayout(f, 'flow');
-            ax = nexttile(t);
+            ax = cellfun(@(~) nexttile(t), num2cell(param.channel), UniformOutput = false);
             colors = colororder('gem');
             flag = true;
             set(f, 'KeyPressFcn', @keyhandler);
+            
+            % loop
             while flag
-                pause(param.pause)
-                [~, ~, x(cnt)] = obj.send(obj.REGULATOR_X_READ,param.index,0);
-                [~, ~, y(cnt)] = obj.send(obj.REGULATOR_Y_READ,param.index,0);
-                [~, ~, z(cnt)] = obj.send(obj.REGULATOR_FIR_READ,param.index,0);
-                
-                cla(ax); hold(ax, 'on'); grid(ax, 'on'); box(ax, 'on');
-                plot(ax, 1:cnt, x)
-                yline(ax, thrx,'-','threshold')
-                yregion(ax, thrx - discx, thrx + discx)
-                ylim(ax, [0, 1024]);
-
-                if cnt > 1
-                    if (y(end) == 1)
-                        if (y(end-1) == 1)
-                            rb(end) = cnt;
+                for i = 1:numel(param.channel)
+                    % transaction
+                    pause(param.pause)
+                    [~, ~, x{i}(cnt)] = obj.send(obj.REGULATOR_X_READ,param.channel(i),0);
+                    [~, ~, y{i}(cnt)] = obj.send(obj.REGULATOR_Y_READ,param.channel(i),0);
+                    
+                    % visualize
+                    cla(ax{i}); hold(ax{i}, 'on'); grid(ax{i}, 'on'); box(ax{i}, 'on');
+                    plot(ax{i}, 1:cnt, x{i})
+                    yline(ax{i}, thrx(i),'-','threshold')
+                    yregion(ax{i}, thrx(i) - discx(i), thrx(i) + discx(i))
+                    ylim(ax{i}, param.ylim);
+    
+                    if cnt > 1
+                        if (y{i}(end) == 1)
+                            if (y{i}(end-1) == 1)
+                                rb{i}(end) = cnt;
+                            else
+                                rb{i} = [rb{i}, cnt];
+                                lb{i} = [lb{i}, rb{i}(end)];
+                            end
                         else
-                            rb = [rb, cnt];
-                            lb = [lb, rb(end)];
+    
                         end
-                    else
-
+                        xregion(ax{i}, lb{i}, rb{i}, FaceColor = colors(2,:), FaceAlpha = 0.25)
                     end
-                    xregion(ax,lb,rb,FaceColor = colors(2,:), FaceAlpha = 0.25)
+  
+                    xlabel(ax{i}, 'time, counts'); ylabel(ax{i}, 'amplitude, counts');
+                    legend(ax{i}, ["pressure", "threshold", "discrepancy", "control"], Location = 'Best')
+                    title(ax{i}, strcat("channel=", num2str(param.channel(i))), FontWeight = 'normal')
+                    if (cnt > 50); xlim(ax{i}, [cnt-50, cnt]); end
                 end
-
-                xlabel(ax, 'time, counts'); ylabel(ax, 'amplitude, counts');
-                legend(ax, ["pressure", "threshold", "discrepancy", "control"], Location = 'Best')
-                title(ax, strcat("channel=", num2str(param.index)), FontWeight = 'normal')
                 % update step
                 cnt = cnt + 1;
-                if (cnt > 50); xlim(ax, [cnt-50, cnt]); end
-                if (cnt > obj.buflen)
-                    cnt = 1; x = []; y = []; z = []; lb = []; rb = [];
+                if (cnt > param.buflen)
+                    cnt = 1;
+                    x = cell(1, numel(param.channel)); y = cell(1, numel(param.channel)); 
+                    lb = num2cell(zeros(1, numel(param.channel))); 
+                    rb = num2cell(zeros(1, numel(param.channel)));
+                    for i = 1:numel(param.channel)
+                        xlim(ax{i}, [0, 50])
+                    end
                 end
             end
             
@@ -137,6 +157,7 @@ classdef ardreg
             if (index > obj.regnum - 1); error(strcat("`index` must be less or equal ", num2str(obj.regnum-1))); end
 
             switch type
+                % FIR filter coefficient
                 case 'coef'
                     command = obj.REGULATOR_COEF_WRITE;
                     for i = 1:numel(value)
@@ -145,12 +166,15 @@ classdef ardreg
                 case 'thresholdx'
                     command = obj.REGULATOR_THRESHOLD_X_WRITE;
                     obj.send(command, index, value);
+                % discrepancy of ADC signal
                 case 'discrepancyx'
                     command = obj.REGULATOR_DISCREPANCY_X_WRITE;
                     obj.send(command, index, value);
+                % threshold of filtered ADC signal by FIR
                 case 'thresholdy'
                     command = obj.REGULATOR_THRESHOLD_Y_WRITE;
                     obj.send(command, index, value);
+                % trigger schimitt dead time
                 case 'deadtime'
                     command = obj.REGULATOR_DEADTIME_WRITE;
                     obj.send(command, index, value);
@@ -169,20 +193,25 @@ classdef ardreg
 
             data = [];
             switch type
+                % FIR filter coefficient
                 case 'coef'
                     command = obj.REGULATOR_COEF_READ;
                     for i = 1:obj.regbuf
                         [~, ~, data(i)] = obj.send(command, bitor(bitshift(index, 4), i), 0);
                     end
+                % threshold of ADC signal
                 case 'thresholdx'
                     command = obj.REGULATOR_THRESHOLD_X_READ;
                     [~, ~, data] = obj.send(command, index, 0);
+                % discrepancy of ADC signal
                 case 'discrepancyx'
                     command = obj.REGULATOR_DISCREPANCY_X_READ;
                     [~, ~, data] = obj.send(command, index, 0);
+                % threshold of filtered ADC signal by FIR
                 case 'thresholdy'
                     command = obj.REGULATOR_THRESHOLD_Y_READ;
                     [~, ~, data] = obj.send(command, index, 0);
+                % trigger schimitt dead time
                 case 'deadtime'
                     command = obj.REGULATOR_DEADTIME_READ;
                     [~, ~, data] = obj.send(command, index, 0);
@@ -190,26 +219,26 @@ classdef ardreg
 
         end
 
-        function obj = control(obj, state, index, param)
+        function obj = control(obj, channel, state, param)
             arguments
                 obj 
+                channel (1,1) {mustBeInteger}
                 state (1,1) logical
-                index (1,1) {mustBeInteger}
                 param.coef (1,:) double = []
-                param.threshold_x (1,1) = []
-                param.discrepency_x (1,1) = []
-                param.threshold_y (1,1) = []
-                param.deadtime (1,1) = []
+                param.threshold (1,:) = []
+                param.discrepancy (1,:) = []
+                param.deadtime (1,:) = []
             end
-            if (numel(coef) ~= obj.regbuf); error(strcat("`numel(coef)` must be equal", num2str(obj.regbuf))); end
+            if ~isempty(param.coef) 
+                if (numel(param.coef) ~= obj.regbuf); error(strcat("`numel(coef)` must be equal ", num2str(obj.regbuf))); end
+            end
             if state
-                if ~isempty(param.coef); obj.write('coef',index,param.coef); end
-                if ~isempty(param.threshold_x); obj.write('thresholdx',index,param.threshold_x); end
-                if ~isempty(param.discrepency_x); obj.write('discrepencyx',index,param.discrepency_x); end
-                if ~isempty(param.threshold_y); obj.write('thresholdy',index,param.threshold_y); end
-                if ~isempty(param.deadtime); obj.write('deadtime',index,param.deadtime); end
+                if ~isempty(param.coef); obj.write('coef',channel,param.coef); end
+                if ~isempty(param.threshold); obj.write('thresholdx',channel,param.threshold); end
+                if ~isempty(param.discrepancy); obj.write('discrepancyx',channel,param.discrepancy); end
+                if ~isempty(param.deadtime); obj.write('deadtime',channel,param.deadtime); end
             end
-            obj.send(obj.REGULATOR_ENABLE, index, double(state));
+            obj.send(obj.REGULATOR_ENABLE, channel, double(state));
         end
 
         function delete(obj)
