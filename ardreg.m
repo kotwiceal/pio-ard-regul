@@ -26,6 +26,8 @@ classdef ardreg
         REGULATOR_BUFFER_LENGTH = 18
         REGULATOR_DEADTIME_READ = 19
         REGULATOR_DEADTIME_WRITE = 20
+        VALVE_READ = 21
+        VALVE_WRITE = 22
         buflen = 1000
     end
 
@@ -149,7 +151,7 @@ classdef ardreg
         function write(obj, type, index, value)
             arguments
                 obj 
-                type {mustBeMember(type, {'coef', 'thresholdx', 'discrepancyx', 'thresholdy', 'deadtime'})}
+                type {mustBeMember(type, {'coef', 'thresholdx', 'discrepancyx', 'thresholdy', 'deadtime', 'valve'})}
                 index (1,1) {mustBeInteger}
                 value (1,:)
             end
@@ -178,6 +180,10 @@ classdef ardreg
                 case 'deadtime'
                     command = obj.REGULATOR_DEADTIME_WRITE;
                     obj.send(command, index, value);
+                % valve state
+                case 'valve'
+                    command = obj.VALVE_WRITE;
+                    obj.send(command, index, value);
             end
 
         end
@@ -185,7 +191,7 @@ classdef ardreg
         function data = read(obj, type, index)
             arguments
                 obj 
-                type {mustBeMember(type, {'coef', 'thresholdx', 'discrepancyx', 'thresholdy', 'deadtime'})}
+                type {mustBeMember(type, {'coef', 'thresholdx', 'discrepancyx', 'thresholdy', 'deadtime', 'valve'})}
                 index (1,1) {mustBeInteger}
             end
 
@@ -214,6 +220,10 @@ classdef ardreg
                 % trigger schimitt dead time
                 case 'deadtime'
                     command = obj.REGULATOR_DEADTIME_READ;
+                    [~, ~, data] = obj.send(command, index, 0);
+                % valve state
+                case 'valve'
+                    command = obj.VALVE_READ;
                     [~, ~, data] = obj.send(command, index, 0);
             end
 
