@@ -217,7 +217,8 @@ void com() {
 				data = pinControlValue[address];
 				break;
 			case VALVE_WRITE:
-				digitalWrite(pinControlMask[address], data);
+				pinControlValue[address] = data;
+				digitalWrite(pinControlMask[address], pinControlValue[address]);
 				break;
 			default:
 				break;
