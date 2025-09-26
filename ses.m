@@ -1,3 +1,5 @@
+%% show port list
+serialportlist
 %% initialize MCU instance
 clc
 clear mcu

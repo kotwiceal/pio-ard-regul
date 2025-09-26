@@ -113,7 +113,11 @@ void regulator() {
 	for (uint8_t i = 0; i < reg_num; i++) {
 		if (!trigger[i]) {
 			pinControlValue[i] = !(int16_t(pinSignalValue[i] - reg_thresh_x[i]) > int16_t(reg_disc_x[i])) & reg_en[i];
-			digitalWrite(pinControlMask[i], pinControlValue[i]);
+			if (reg_en[i]) {
+				digitalWrite(pinControlMask[i], pinControlValue[i]);
+			} else {
+				digitalWrite(pinControlMask[i], 0);
+			}
 			trigger[i] = true;
 			time[i] = 0;
 		} else {
