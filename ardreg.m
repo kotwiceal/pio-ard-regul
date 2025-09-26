@@ -191,7 +191,7 @@ classdef ardreg
         function data = read(obj, type, index)
             arguments
                 obj 
-                type {mustBeMember(type, {'coef', 'thresholdx', 'discrepancyx', 'thresholdy', 'deadtime', 'valve'})}
+                type {mustBeMember(type, {'coef', 'thresholdx', 'discrepancyx', 'thresholdy', 'deadtime', 'valve', 'sensor'})}
                 index (1,1) {mustBeInteger}
             end
 
@@ -224,6 +224,9 @@ classdef ardreg
                 % valve state
                 case 'valve'
                     command = obj.VALVE_READ;
+                    [~, ~, data] = obj.send(command, index, 0);
+                case 'sensor'
+                    command = obj.ANALOG_READ;
                     [~, ~, data] = obj.send(command, index, 0);
             end
 
